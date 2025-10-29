@@ -18,6 +18,7 @@ This project adds a second INA3221 (at I2C address 0x41) to monitor three additi
 - Proper I2C connections to the existing I2C bus (gen2_i2c)
 - Address configuration: A0=HIGH, A1=LOW (sets address to 0x41)
 - Shunt resistors for each channel (5mΩ recommended)
+- INA3221 connected to I2C-1 via gpio 27/28
 
 ## 📁 Repository Contents
 
