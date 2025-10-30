@@ -19,20 +19,20 @@
 
 				channel@0 {
 					reg = <0>;
-					label = "VDD_BATTERY_CH0";
-					shunt-resistor-micro-ohms = <5000>;
+					label = "VDD_IN_CH0";
+					shunt-resistor-micro-ohms = <500000>;
 				};
 
 				channel@1 {
 					reg = <1>;
 					label = "VDD_CHARGER_CH1";
-					shunt-resistor-micro-ohms = <5000>;
+					shunt-resistor-micro-ohms = <500000>;
 				};
 
 				channel@2 {
 					reg = <2>;
-					label = "VDD_CUSTOM_CH2";
-					shunt-resistor-micro-ohms = <5000>;
+					label = "VDD_BATTERY_CH2";
+					shunt-resistor-micro-ohms = <500000>;
 				};
 			};
 		};

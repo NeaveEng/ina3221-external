@@ -24,29 +24,90 @@ This project adds a second INA3221 (at I2C address 0x41) to monitor three additi
 
 ```
 ina3221-external/
-├── README.md                    # This file
-├── BOOT_CONFIGURATION.md       # Detailed boot setup guide  
-├── PERSISTENCE_GUIDE.md        # hwmon persistence troubleshooting
-├── ina3221-external.dts        # External INA3221 overlay source
-├── add_ina3221_overlay.sh      # Boot configuration script
-├── remove_ina3221_overlay.sh   # Overlay removal script
-└── read_ina3221_sensors.sh     # Sensor reading script
+├── README.md                           # This comprehensive guide
+├── BOOT_CONFIGURATION.md              # Detailed boot setup guide  
+├── PERSISTENCE_GUIDE.md               # hwmon persistence troubleshooting
+├── LICENSE                            # MIT License
+├── .gitignore                         # Git ignore rules
+├── ina3221-external.dts               # External INA3221 overlay source
+├── ina3221_labels.conf                # Channel label configuration
+├── setup_persistence.sh               # Systemd service setup (recommended)
+├── setup_ina3221_device.sh           # Device setup and calibration script
+├── calibrate_ina3221.sh               # Manual calibration utility
+├── read_ina3221_sensors.sh            # Sensor reading script with labels
+├── test_persistence.sh                # Persistence testing utility
+├── add_ina3221_overlay.sh             # Boot configuration script (legacy)
+└── remove_ina3221_overlay.sh          # Overlay removal script (legacy)
 ```
 
-**Note**: The compiled overlay (`.dtbo`) is generated as needed and copied to `/boot/` for system use.
+**Key Files:**
+- **`setup_persistence.sh`**: Main installation script (creates systemd service)
+- **`ina3221_labels.conf`**: Edit this to customize channel names
+- **`read_ina3221_sensors.sh`**: Primary tool for reading sensor data
+- **`calibrate_ina3221.sh`**: Calibration utility for custom shunt resistors
 
 ## 🚀 Quick Start
+
+**TL;DR**: For most users, just run the automated setup:
+
+```bash
+# Clone and setup
+git clone https://github.com/NeaveEng/ina3221-external.git
+cd ina3221-external
+
+# Customize labels (optional)
+nano ina3221_labels.conf
+
+# Install with persistence
+sudo ./setup_persistence.sh
+
+# Reboot and test
+sudo reboot
+sudo ./read_ina3221_sensors.sh
+```
+
+Your external INA3221 will now show up as:
+- **Channel 0 (VDD_MOTOR)**: Custom power rail monitoring
+- **Channel 1 (VDD_SENSORS)**: Custom power rail monitoring  
+- **Channel 2 (VDD_EXTERNAL)**: Custom power rail monitoring
+
+## 🚀 Detailed Installation
 
 ### Step 1: Hardware Setup
 1. Connect your second INA3221 to the same I2C bus as the original
 2. Configure address pins: A0=HIGH, A1=LOW (address = 0x41)
 3. Connect shunt resistors to the power rails you want to monitor
+4. **Measure your shunt resistor values** for accurate calibration
 
-### Step 2: Install the Overlay
+### Step 2: Software Installation
+
+#### Method A: Automated Setup with Persistence (Recommended)
+
+The modern approach uses a systemd service for reliable device creation and configuration:
+
 ```bash
-# Navigate to the project directory
-cd ina3221-external/
+# Clone this repository
+git clone https://github.com/NeaveEng/ina3221-external.git
+cd ina3221-external
 
+# Customize channel labels (optional)
+nano ina3221_labels.conf
+
+# Run the persistence setup script
+sudo ./setup_persistence.sh
+
+# Reboot to test automatic persistence
+sudo reboot
+
+# After reboot, verify everything is working
+sudo ./read_ina3221_sensors.sh
+```
+
+#### Method B: Device Tree Overlay (Alternative)
+
+**Note**: Device tree overlays don't load reliably on Jetson bootloaders. Use Method A for production systems.
+
+```bash
 # Compile the overlay from source
 dtc -I dts -O dtb -@ ina3221-external.dts -o ina3221-external.dtbo
 
@@ -56,14 +117,25 @@ sudo cp ina3221-external.dtbo /boot/
 # Run the installation script
 sudo ./add_ina3221_overlay.sh
 
-# Clean up (optional - remove local compiled file)
-rm ina3221-external.dtbo
-
 # Reboot to apply changes
 sudo reboot
 ```
 
-### Step 3: Verify Installation
+### Step 3: Calibration
+
+Your external INA3221 will be automatically calibrated for 500mΩ (0.5Ω) shunt resistors. If you have different values:
+
+```bash
+# Check your current readings
+sudo ./read_ina3221_sensors.sh
+
+# If readings seem too high/low, run calibration
+# (Edit the script first to match your measured shunt values)
+nano calibrate_ina3221.sh
+sudo ./calibrate_ina3221.sh
+```
+
+### Step 4: Verify Installation
 ```bash
 # Check I2C devices (should show both sensors)
 ls /sys/bus/i2c/devices/i2c-1/
@@ -86,59 +158,228 @@ echo ina3221 0x41 | sudo tee /sys/bus/i2c/devices/i2c-1/new_device
 ls /sys/bus/i2c/devices/i2c-1/1-0041/
 ```
 
-## 📊 Channel Configuration
+## � Usage
 
-### Original INA3221 (Address 0x40)
+### Reading Power Monitoring Data
+
+The simplest way to read all sensors:
+
+```bash
+# Read all INA3221 sensors with labels
+sudo ./read_ina3221_sensors.sh
+```
+
+**Sample Output:**
+```
+=== INA3221 Power Monitor Reading ===
+
+--- Built-in INA3221 (Address: 0x40) ---
+  Channel 0 (VDD_IN):
+    Voltage: 5080 mV
+    Current: 816 mA
+    Power: 4145 mW
+
+--- External INA3221 (Address: 0x41) ---
+  Channel 0 (VDD_MOTOR):
+    Voltage: 11848 mV
+    Current: 119 mA
+    Power: 1409 mW
+  Channel 1 (VDD_SENSORS):
+    Voltage: 12016 mV
+    Current: -195 mA
+    Power: -2343 mW  # Negative = supplying power
+```
+
+### Direct hwmon Access
+
+For programmatic access or custom monitoring:
+
+```bash
+# Direct sensor readings
+cat /sys/class/hwmon/hwmon6/curr1_input  # Channel 0 current (mA)
+cat /sys/class/hwmon/hwmon6/in1_input    # Channel 0 voltage (mV)
+
+# Using convenience symlinks
+cat /etc/ina3221/channels/channel0_current
+cat /etc/ina3221/channels/channel1_voltage
+
+# Get channel labels from config
+source /etc/ina3221/ina3221_labels.conf
+echo "Monitoring: $CHANNEL_0_LABEL"
+```
+
+### Continuous Monitoring
+
+Create a simple monitoring script:
+
+```bash
+#!/bin/bash
+# monitor_power.sh - Simple power monitoring loop
+
+while true; do
+    clear
+    echo "=== Power Monitor $(date) ==="
+    sudo ./read_ina3221_sensors.sh
+    sleep 5
+done
+```
+
+### Integration with Other Systems
+
+```bash
+# Export readings to JSON (example)
+#!/bin/bash
+# export_readings.sh
+
+HWMON="/sys/class/hwmon/hwmon6"
+echo "{"
+echo "  \"timestamp\": \"$(date -Iseconds)\","
+echo "  \"external_ina3221\": {"
+echo "    \"channel0\": {"
+echo "      \"voltage_mv\": $(cat $HWMON/in1_input),"
+echo "      \"current_ma\": $(cat $HWMON/curr1_input)"
+echo "    }"
+echo "  }"
+echo "}"
+```
+
+## �📊 Channel Configuration & Labeling
+
+### Built-in INA3221 (Address 0x40) - System Power Rails
 | Channel | Label | Function |
 |---------|--------|----------|
 | 0 | VDD_IN | Main input voltage |
 | 1 | VDD_CPU_GPU_CV | CPU/GPU/CV power |
 | 2 | VDD_SOC | SoC power |
 
-### External INA3221 (Address 0x41)
-| Channel | Label | Function | Customizable |
-|---------|--------|----------|--------------|
-| 0 | VDD_CUSTOM_CH0 | User-defined power rail | ✅ |
-| 1 | VDD_CUSTOM_CH1 | User-defined power rail | ✅ |
-| 2 | VDD_CUSTOM_CH2 | User-defined power rail | ✅ |
+### External INA3221 (Address 0x41) - Custom Power Rails
+| Channel | Default Label | Customizable | Configuration |
+|---------|--------|----------|---------|
+| 0 | VDD_MOTOR | ✅ | Edit `ina3221_labels.conf` |
+| 1 | VDD_SENSORS | ✅ | Edit `ina3221_labels.conf` |
+| 2 | VDD_EXTERNAL | ✅ | Edit `ina3221_labels.conf` |
 
-## 🔧 hwmon Persistence
+### Customizing Channel Labels
 
-The overlay should automatically create the hwmon device on every boot. If you're having persistence issues:
+Edit the `ina3221_labels.conf` file to customize your channel names:
 
-### Quick Check
 ```bash
-# Reboot and verify automatic creation (no manual commands needed)
-sudo reboot
+# Edit channel labels
+nano ina3221_labels.conf
 
-# After reboot, check if external sensor appears automatically
+# Example configuration:
+CHANNEL_0_LABEL="VDD_MOTOR_12V"
+CHANNEL_1_LABEL="VDD_SENSOR_5V" 
+CHANNEL_2_LABEL="VDD_LIGHTING"
+
+# Apply changes (restart service)
+sudo systemctl restart ina3221-external.service
+
+# Verify new labels
 sudo ./read_ina3221_sensors.sh
 ```
 
-### Troubleshooting
-If the device doesn't persist after reboot, see [PERSISTENCE_GUIDE.md](PERSISTENCE_GUIDE.md) for:
-- systemd service creation
-- udev rule setup  
-- Overlay loading troubleshooting
-- Alternative persistence methods
+## ⚡ Shunt Resistor Calibration
 
-## 🔧 Customization
+The system automatically calibrates for **500mΩ (0.5Ω)** shunt resistors. If you have different values:
 
-### Changing Channel Labels
-Edit `ina3221-external.dts` and modify the label properties:
+### Automatic Calibration
+```bash
+# Run the calibration script
+sudo ./calibrate_ina3221.sh
 
+# For custom values, edit the script first:
+nano calibrate_ina3221.sh
+# Change: SHUNT_VALUE=500000  # to your value in micro-ohms
+```
+
+### Manual Calibration
+```bash
+# Set shunt resistor values (in micro-ohms):
+# Examples: 10mΩ = 10000, 100mΩ = 100000, 500mΩ = 500000
+
+sudo bash -c 'echo 100000 > /sys/class/hwmon/hwmon6/shunt1_resistor'  # 100mΩ
+sudo bash -c 'echo 100000 > /sys/class/hwmon/hwmon6/shunt2_resistor'
+sudo bash -c 'echo 100000 > /sys/class/hwmon/hwmon6/shunt3_resistor'
+
+# Verify readings
+sudo ./read_ina3221_sensors.sh
+```
+
+### Persistent Calibration
+
+To make custom calibration persistent, edit the setup script:
+
+```bash
+# Edit the device setup script
+nano setup_ina3221_device.sh
+
+# Change these lines to your shunt resistor value:
+echo 500000 > "$HWMON_DEVICE/shunt1_resistor"  # Change 500000 to your value
+echo 500000 > "$HWMON_DEVICE/shunt2_resistor" 
+echo 500000 > "$HWMON_DEVICE/shunt3_resistor"
+
+# Restart service to apply
+sudo systemctl restart ina3221-external.service
+```
+
+## 🔧 System Integration & Persistence
+
+### Automatic Startup
+
+The systemd service ensures your external INA3221 is available on every boot:
+
+```bash
+# Check service status
+sudo systemctl status ina3221-external.service
+
+# View service logs  
+sudo journalctl -u ina3221-external.service
+
+# Manual restart if needed
+sudo systemctl restart ina3221-external.service
+
+# Disable automatic startup (if needed)
+sudo systemctl disable ina3221-external.service
+```
+
+### Convenience Access
+
+The system creates convenient access points:
+
+```bash
+# Direct channel access via symlinks
+ls -la /etc/ina3221/channels/
+
+# Read specific channels:
+cat /etc/ina3221/channels/channel0_current  # Channel 0 current
+cat /etc/ina3221/channels/channel1_voltage  # Channel 1 voltage
+
+# Configuration file location
+cat /etc/ina3221/ina3221_labels.conf
+
+# Direct hwmon access
+ls -la /sys/class/hwmon/hwmon6/
+```
+
+## 🔧 Legacy Customization (Device Tree Method)
+
+If using the device tree overlay method, customize by editing the source:
+
+### Changing Channel Labels in Device Tree
 ```dts
+# Edit ina3221-external.dts
 channel@0 {
     reg = <0>;
     label = "YOUR_CUSTOM_LABEL";
-    shunt-resistor-micro-ohms = <5000>;
+    shunt-resistor-micro-ohms = <500000>;
 };
 ```
 
-### Changing Shunt Resistor Values
+### Changing Shunt Resistor Values in Device Tree
 Modify the `shunt-resistor-micro-ohms` property to match your hardware:
-- 5000 = 5mΩ (default)
-- 1000 = 1mΩ
+- 500000 = 500mΩ (recommended)
+- 100000 = 100mΩ  
 - 10000 = 10mΩ
 
 ### Recompiling After Changes

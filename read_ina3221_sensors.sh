@@ -1,39 +1,80 @@
 #!/bin/bash
 
+# Load custom channel labels if available
+CONFIG_FILE="/etc/ina3221/ina3221_labels.conf"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+else
+    # Default labels if no config file exists
+    CHANNEL_0_LABEL="CUSTOM_RAIL_1"
+    CHANNEL_1_LABEL="CUSTOM_RAIL_2"
+    CHANNEL_2_LABEL="CUSTOM_RAIL_3"
+fi
+
 # Script to read both INA3221 sensors on Jetson Orin Nano
 
 echo "=== INA3221 Power Monitor Reading ==="
 echo
 
-# Function to read INA3221 data
-read_ina3221() {
-    local hwmon_path=$1
-    local sensor_name=$2
-    local address=$3
+# Function to read INA3221 with custom labels for external device
+read_external_ina3221() {
+    local hwmon_path="$1"
+    local device_name="$2"
+    local address="$3"
     
-    echo "--- $sensor_name (Address: $address) ---"
+    echo "--- $device_name (Address: $address) ---"
     
-    if [ ! -d "$hwmon_path" ]; then
-        echo "Error: $hwmon_path not found"
-        return 1
+    # Channel 1
+    local voltage1=$(cat "$hwmon_path/in1_input" 2>/dev/null || echo "N/A")
+    local current1=$(cat "$hwmon_path/curr1_input" 2>/dev/null || echo "N/A")
+    echo "  Channel 0 ($CHANNEL_0_LABEL):"
+    echo "    Voltage: ${voltage1} mV"
+    echo "    Current: ${current1} mA"
+    if [ "$voltage1" != "N/A" ] && [ "$current1" != "N/A" ]; then
+        echo "    Power: $((voltage1 * current1 / 1000)) mW"
     fi
+    echo
     
-    # Check if it's really an INA3221
-    if [ "$(cat $hwmon_path/name 2>/dev/null)" != "ina3221" ]; then
-        echo "Error: Not an INA3221 device"
-        return 1
+    # Channel 2
+    local voltage2=$(cat "$hwmon_path/in2_input" 2>/dev/null || echo "N/A")
+    local current2=$(cat "$hwmon_path/curr2_input" 2>/dev/null || echo "N/A")
+    echo "  Channel 1 ($CHANNEL_1_LABEL):"
+    echo "    Voltage: ${voltage2} mV"
+    echo "    Current: ${current2} mA"
+    if [ "$voltage2" != "N/A" ] && [ "$current2" != "N/A" ]; then
+        echo "    Power: $((voltage2 * current2 / 1000)) mW"
     fi
+    echo
     
-    # Read channel data
+    # Channel 3
+    local voltage3=$(cat "$hwmon_path/in3_input" 2>/dev/null || echo "N/A")
+    local current3=$(cat "$hwmon_path/curr3_input" 2>/dev/null || echo "N/A")
+    echo "  Channel 2 ($CHANNEL_2_LABEL):"
+    echo "    Voltage: ${voltage3} mV"
+    echo "    Current: ${current3} mA"
+    if [ "$voltage3" != "N/A" ] && [ "$current3" != "N/A" ]; then
+        echo "    Power: $((voltage3 * current3 / 1000)) mW"
+    fi
+    echo
+}
+
+# Function to read built-in INA3221 sensors with system labels
+read_builtin_ina3221() {
+    local hwmon_path="$1"
+    local device_name="$2"
+    local address="$3"
+    
+    echo "--- $device_name (Address: $address) ---"
+    
+    # Read channels 1-3 (INA3221 has 3 channels)
     for ch in 1 2 3; do
-        local voltage=$(cat $hwmon_path/in${ch}_input 2>/dev/null || echo "N/A")
-        local current=$(cat $hwmon_path/curr${ch}_input 2>/dev/null || echo "N/A")
+        local voltage=$(cat "$hwmon_path/in${ch}_input" 2>/dev/null || echo "N/A")
+        local current=$(cat "$hwmon_path/curr${ch}_input" 2>/dev/null || echo "N/A")
         
         # Try to get label if available
-        local label_file="$hwmon_path/in${ch}_label"
         local label=""
-        if [ -f "$label_file" ]; then
-            label=" ($(cat $label_file 2>/dev/null || echo 'Unknown'))"
+        if [ -f "$hwmon_path/in${ch}_label" ]; then
+            label=" ($(cat "$hwmon_path/in${ch}_label" 2>/dev/null))"
         fi
         
         echo "  Channel $((ch-1))$label:"
@@ -72,15 +113,15 @@ for hwmon in /sys/class/hwmon/hwmon*; do
         device_link=$(readlink -f $hwmon/device 2>/dev/null)
         
         if [[ "$device_link" == *"1-0040"* ]]; then
-            read_ina3221 "$hwmon" "Original INA3221" "0x40"
+            read_builtin_ina3221 "$hwmon" "Built-in INA3221" "0x40"
             original_found=true
         elif [[ "$device_link" == *"1-0041"* ]]; then
-            read_ina3221 "$hwmon" "Second INA3221" "0x41"
+            read_external_ina3221 "$hwmon" "External INA3221" "0x41"
             second_found=true
         else
             # Fallback: just read it as unknown
             addr=$(basename "$device_link" | cut -d'-' -f2)
-            read_ina3221 "$hwmon" "INA3221" "0x$addr"
+            read_builtin_ina3221 "$hwmon" "INA3221" "0x$addr"
         fi
     fi
 done

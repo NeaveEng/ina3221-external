@@ -18,7 +18,7 @@ echo "=== Setting up INA3221 External Persistence ==="
 echo
 
 # Create systemd service
-echo "Creating systemd service..."
+echo "Creating systemd service with calibration..."
 cat > "$SERVICE_FILE" << 'EOF'
 [Unit]
 Description=Create external INA3221 I2C device
@@ -29,6 +29,9 @@ Before=graphical.target
 Type=oneshot
 ExecStart=/bin/bash -c 'echo ina3221 0x41 > /sys/bus/i2c/devices/i2c-1/new_device'
 ExecStartPost=/bin/sleep 2
+ExecStartPost=/bin/bash -c 'echo 500000 > /sys/class/hwmon/hwmon6/shunt1_resistor'
+ExecStartPost=/bin/bash -c 'echo 500000 > /sys/class/hwmon/hwmon6/shunt2_resistor'
+ExecStartPost=/bin/bash -c 'echo 500000 > /sys/class/hwmon/hwmon6/shunt3_resistor'
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
@@ -71,7 +74,12 @@ if [ -d "/sys/bus/i2c/devices/i2c-1/1-0041" ]; then
         if [ "$(cat $i 2>/dev/null)" = "ina3221" ]; then
             device_link=$(readlink -f $(dirname $i)/device 2>/dev/null)
             if [[ "$device_link" == *"1-0041"* ]]; then
-                echo "✅ External INA3221 hwmon: $(dirname $i)"
+                hwmon_path=$(dirname $i)
+                echo "✅ External INA3221 hwmon: $hwmon_path"
+                echo "   Shunt resistor calibration:"
+                echo "     Channel 1: $(cat $hwmon_path/shunt1_resistor 2>/dev/null || echo 'N/A') µΩ"
+                echo "     Channel 2: $(cat $hwmon_path/shunt2_resistor 2>/dev/null || echo 'N/A') µΩ"
+                echo "     Channel 3: $(cat $hwmon_path/shunt3_resistor 2>/dev/null || echo 'N/A') µΩ"
             fi
         fi
     done
@@ -83,7 +91,10 @@ fi
 echo
 echo "=== Persistence Setup Complete ==="
 echo
-echo "The external INA3221 will now be created automatically on every boot."
+echo "The external INA3221 will now be:"
+echo "  1. Created automatically on every boot at I2C address 0x41"
+echo "  2. Calibrated with 500mΩ (0.5Ω) shunt resistors"
+echo "  3. Available as hwmon6 for power monitoring"
 echo
 echo "To test persistence:"
 echo "1. Reboot: sudo reboot"
