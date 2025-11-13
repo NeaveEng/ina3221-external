@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Load custom channel labels if available
-CONFIG_FILE="/etc/ina3221/ina3221_labels.conf"
+CONFIG_FILE="/etc/ina3221-external/ina3221_labels.conf"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
